@@ -1,7 +1,7 @@
 import axios from "axios"
 import { reciters } from "../data/reciters.js"
 
-export const getQuran = async (req, res) => {
+export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   const { ayah } = req.params
 
   if (!ayah) {
@@ -30,7 +30,7 @@ export const getQuran = async (req, res) => {
       data.data.verseImage = verseImage
 
       // Find the correct reciter subfolder
-      const reciter = reciters.find((r) => r.name === "Alafasy") // You can change this to any reciter you prefer
+      const reciter = reciters.find((r) => r.name === "Minshawy Murattal") // You can change this to any reciter you prefer
       if (reciter) {
         const audioUrl = `https://everyayah.com/data/${reciter.subfolder}/${surahNumber.padStart(3, "0")}${verseNumber.padStart(3, "0")}.mp3`
         data.data.audio = audioUrl
@@ -48,3 +48,5 @@ export const getQuran = async (req, res) => {
   }
 }
 
+export const getSurahs = async (req, res) => {}
+export const getSurahByNumber = async (req, res) => {}

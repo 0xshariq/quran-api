@@ -1,3 +1,3 @@
 ```bash
-    /api/v2/quran?key={apiKey}/${surahNumber}:${verseNumber}
+    /api/v2/quran/${surahNumber}:${verseNumber}?key={apiKey}
 ```

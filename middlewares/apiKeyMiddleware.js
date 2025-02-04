@@ -5,7 +5,6 @@ const AUTH_API_URL = "https://user-authentication-api-jqfm.onrender.com/api/v2"
 export const apiKeyMiddleware = async (req, res, next) => {
   try {
     const apiKey = req.query.key || req.headers["x-api-key"]
-
     if (!apiKey) {
       return res.status(401).json({ message: "API key is missing" })
     }

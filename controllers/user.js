@@ -17,27 +17,10 @@ export const createUser = async (req, res, next) => {
       password,
     })
 
-    // Check if the API response contains a token
-    const { token } = response.data
-
-    if (!token) {
-      return next(new ErrorHandler(500, "Token not received from authentication server"))
-    }
-
-    res
-      .status(201)
-      .cookie("token", token, {
-        httpOnly: true,
-        maxAge: 15 * 24 * 60 * 60 * 1000, // 15 days
-        sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
-        secure: process.env.NODE_ENV === "development" ? false : true,
-      })
-      .json({
-        success: true,
-        message: "User registered successfully",
-      })
+    res.status(201).json(response.data)
   } catch (error) {
-    handleApiError(error, next)
+    console.error("Error during user registration:", error.response?.data || error.message)
+    next(new ErrorHandler(error.response?.status || 500, error.response?.data?.message || "Error during registration"))
   }
 }
 
@@ -54,60 +37,40 @@ export const loginUser = async (req, res, next) => {
       password,
     })
 
-    // Check if the API response contains a token
-    const { token } = response.data
-
-    if (!token) {
-      return next(new ErrorHandler(500, "Token not received from authentication server"))
+    // Forward the Set-Cookie header if present
+    if (response.headers["set-cookie"]) {
+      res.setHeader("Set-Cookie", response.headers["set-cookie"])
     }
 
-    res
-      .status(200)
-      .cookie("token", token, {
-        httpOnly: true,
-        maxAge: 15 * 24 * 60 * 60 * 1000, // 15 days
-        sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
-        secure: process.env.NODE_ENV === "development" ? false : true,
-      })
-      .json({
-        success: true,
-        message: "Login successful",
-      })
+    res.status(200).json(response.data)
   } catch (error) {
-    handleApiError(error, next)
+    console.error("Error during user login:", error.response?.data || error.message)
+    next(
+      new ErrorHandler(
+        error.response?.status || 500,
+        error.response?.data?.message || "Internal server error during login",
+      ),
+    )
   }
 }
 
 export const logoutUser = async (req, res, next) => {
   try {
-    res
-      .status(200)
-      .clearCookie("token", {
-        httpOnly: true,
-        sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
-        secure: process.env.NODE_ENV === "development" ? false : true,
-      })
-      .json({
-        success: true,
-        message: "Logout successful",
-      })
-  } catch (error) {
-    next(new ErrorHandler(500, "Error during logout"))
-  }
-}
+    const response = await axios.get(`${API_BASE_URL}/logout`, {
+      headers: {
+        Cookie: req.headers.cookie,
+      },
+    })
 
-function handleApiError(error, next) {
-  if (error.response) {
-    // The request was made and the server responded with a status code
-    // that falls out of the range of 2xx
-    next(new ErrorHandler(error.response.status, error.response.data.message || "Error from authentication server"))
-  } else if (error.request) {
-    // The request was made but no response was received
-    next(new ErrorHandler(500, "No response received from authentication server"))
-  } else {
-    // Something happened in setting up the request that triggered an Error
-    console.error("Error", error.message)
-    next(new ErrorHandler(500, "Error during API request"))
+    // Forward the Set-Cookie header to clear the cookie
+    if (response.headers["set-cookie"]) {
+      res.setHeader("Set-Cookie", response.headers["set-cookie"])
+    }
+
+    res.status(200).json(response.data)
+  } catch (error) {
+    console.error("Error during user logout:", error.response?.data || error.message)
+    next(new ErrorHandler(error.response?.status || 500, error.response?.data?.message || "Error during logout"))
   }
 }
 

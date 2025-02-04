@@ -33,7 +33,7 @@ app.use("/api/v2/quran", apiKeyMiddleware, quranRouter)
 
 // Root route
 app.get("/", (req, res) => {
-  res.send("Welcome to Quran API")
+  res.sendFile("index.html", { root: "./" })
 })
 
 
