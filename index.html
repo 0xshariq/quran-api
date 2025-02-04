@@ -97,6 +97,21 @@
       opacity: 0.9;
     }
 
+    .warning-note {
+      background: #fff3cd;
+      color: #856404;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+      border-left: 4px solid #ffeeba;
+    }
+
+    [data-theme="dark"] .warning-note {
+      background: #3c2f03;
+      color: #ffd351;
+      border-color: #665a0d;
+    }
+
     @media (max-width: 768px) {
       body {
         padding: 1rem;
@@ -108,7 +123,6 @@
       }
     }
 
-    /* Animation for sections */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
@@ -125,10 +139,37 @@
     <h1>📖 Quran API Documentation</h1>
     <p>Explore the Holy Quran through our RESTful API. Built with Node.js and Express.</p>
 
+    <div class="warning-note">
+      <strong>⚠️ API Key Required:</strong> All endpoints require authentication via API key.
+    </div>
+
     <section>
       <h2>Base URL</h2>
       <div class="endpoint-card">
         <code>https://quran-api-ny11.onrender.com/api/v2</code>
+      </div>
+    </section>
+
+    <section>
+      <h2>🔑 Authentication</h2>
+      <div class="endpoint-card">
+        <h3>Get Your API Key</h3>
+        <p>1. Register or login at our authentication service:</p>
+        <pre><code>POST https://user-authentication-api-jqfm.onrender.com/api/v2/register
+POST https://user-authentication-api-jqfm.onrender.com/api/v2/login</code></pre>
+
+        <p>2. You'll receive your API key via email after successful registration/login.</p>
+        
+        <h3>Using the API Key</h3>
+        <p>Include the API key in the Authorization header:</p>
+        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+        
+        <p><strong>Example Request Header:</strong></p>
+        <pre><code>{
+  "headers": {
+    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}</code></pre>
       </div>
     </section>
 
@@ -138,6 +179,8 @@
       <div class="endpoint-card">
         <h3>1. Get All Surahs</h3>
         <p><strong>Endpoint:</strong> <code>GET /surahs</code></p>
+        <p><strong>Headers:</strong></p>
+        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
         <pre><code>GET /surahs</code></pre>
         <p><strong>Sample Response:</strong></p>
@@ -157,16 +200,17 @@
     "englishNameTranslation": "The Cow",
     "numberOfAyahs": 286,
     "revelationType": "Medinan"
-  },
-  ...
+  }
 ]</code></pre>
       </div>
 
       <div class="endpoint-card">
         <h3>2. Get Surah by Number</h3>
-        <p><strong>Endpoint:</strong> <code>GET /surah/:{surahNumber}</code></p>
+        <p><strong>Endpoint:</strong> <code>GET /surah/:surahNumber</code></p>
+        <p><strong>Headers:</strong></p>
+        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
-        <pre><code>GET /surahs/1</code></pre>
+        <pre><code>GET /surah/1</code></pre>
         <p><strong>Sample Response:</strong></p>
         <pre><code>{
   "number": 1,
@@ -182,22 +226,16 @@
       "numberInSurah": 1,
       "juz": 1,
       "page": 1
-    },
-    {
-      "number": 2,
-      "text": "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ",
-      "numberInSurah": 2,
-      "juz": 1,
-      "page": 1
-    },
-    ...
+    }
   ]
 }</code></pre>
       </div>
 
       <div class="endpoint-card">
-        <h3>3. Get Ayah by Surah and Ayah Number</h3>
+        <h3>3. Get Ayah by Surah and Verse Number</h3>
         <p><strong>Endpoint:</strong> <code>GET /{surahNumber}:{verseNumber}</code></p>
+        <p><strong>Headers:</strong></p>
+        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
         <pre><code>GET /1:1</code></pre>
         <p><strong>Sample Response:</strong></p>
@@ -217,6 +255,30 @@
     </section>
 
     <section>
+      <h2>🚨 Error Responses</h2>
+      <div class="endpoint-card">
+        <h3>Invalid/Missing API Key</h3>
+        <pre><code>{
+  "status": 401,
+  "error": "Unauthorized",
+  "message": "Valid API key required"
+}</code></pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>🔒 Security Best Practices</h2>
+      <div class="endpoint-card">
+        <ul>
+          <li>Never commit API keys to version control</li>
+          <li>Store keys in environment variables</li>
+          <li>Rotate keys periodically</li>
+          <li>Revoke compromised keys immediately</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
       <h2>📜 License</h2>
       <p>This project is licensed under the MIT License. See the <a href="LICENSE" style="color: var(--secondary-color);">LICENSE</a> file for details.</p>
     </section>
@@ -230,7 +292,6 @@
       );
     }
 
-    // Add intersection observer for scroll animations
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
