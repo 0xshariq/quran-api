@@ -4,9 +4,9 @@ import { getAyahBySurahNumberAndVerseNumber, getSurahs, getSurahByNumber } from 
 const router = express.Router()
 
 // Update the route to use a wildcard parameter
-router.get("/:ayah(*)", getAyahBySurahNumberAndVerseNumber)
 router.get("/surahs", getSurahs)
 router.get("/surah/:surahNumber", getSurahByNumber)
+router.get("/:ayah(*)", getAyahBySurahNumberAndVerseNumber)
 
 export default router
 

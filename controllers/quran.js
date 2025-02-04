@@ -48,5 +48,45 @@ export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   }
 }
 
-export const getSurahs = async (req, res) => {}
-export const getSurahByNumber = async (req, res) => {}
+export const getSurahs = async (req, res) => {
+  const url = "http://api.alquran.cloud/v1/surah"
+
+  try {
+    const response = await axios.get(url)
+    const data = response.data // axios already parses the JSON
+
+    if (data.code === 200 && data.status === "OK") {
+      res.status(200).json(data)
+    } else {
+      res.status(data.code || 500).json(data)
+    }
+  } catch (error) {
+    console.error("Error fetching Quran data:", error)
+    res.status(500).json({ code: 500, status: "Error", message: "Failed to fetch Quran data" })
+  }
+}
+export const getSurahByNumber = async (req, res) => {
+  const { surahNumber } = req.params
+
+  if (!surahNumber) {
+    return res
+      .status(400)
+      .json({ code: 400, status: "Error", message: "Missing surahNumber parameter" })
+  }
+
+  const url = `http://api.alquran.cloud/v1/surah/${surahNumber}`
+
+  try {
+    const response = await axios.get(url)
+    const data = response.data // axios already parses the JSON
+
+    if (data.code === 200 && data.status === "OK") {
+      res.status(200).json(data)
+    } else {
+      res.status(data.code || 500).json(data)
+    }
+  } catch (error) {
+    console.error("Error fetching Quran data:", error)
+    res.status(500).json({ code: 500, status: "Error", message: "Failed to fetch Quran data" })
+  } 
+}
