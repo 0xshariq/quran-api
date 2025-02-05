@@ -161,15 +161,24 @@ POST https://user-authentication-api-jqfm.onrender.com/api/v2/login</code></pre>
         <p>2. You'll receive your API key via email after successful registration/login.</p>
         
         <h3>Using the API Key</h3>
-        <p>Include the API key in the Authorization header:</p>
-        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+        <p>Include the API key in the header :</p>
+        <pre><code>x-api-key : YOUR_API_KEY</code></pre>
         
         <p><strong>Example Request Header:</strong></p>
-        <pre><code>{
+        <pre><code>
   "headers": {
-    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    "x-api-key: "eyiOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
   }
-}</code></pre>
+</code></pre>
+      <p>Incude the API key in the query :</p>
+      <pre><code>?key : YOUR_API_KEY</code></pre>
+
+      <p><strong>Example Request Query:</strong></p>
+      <pre>
+        <code>
+          ?key=eyiOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+        </code>
+      </pre>
       </div>
     </section>
 
@@ -180,7 +189,9 @@ POST https://user-authentication-api-jqfm.onrender.com/api/v2/login</code></pre>
         <h3>1. Get All Surahs</h3>
         <p><strong>Endpoint:</strong> <code>GET /surahs</code></p>
         <p><strong>Headers:</strong></p>
-        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+        <pre><code>x-api-key : YOUR_API_KEY</code></pre>
+        <p><strong>Query:</strong></p>
+        <pre><code>?key : YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
         <pre><code>GET /surahs</code></pre>
         <p><strong>Sample Response:</strong></p>
@@ -209,7 +220,9 @@ POST https://user-authentication-api-jqfm.onrender.com/api/v2/login</code></pre>
         <h3>2. Get Surah by Number</h3>
         <p><strong>Endpoint:</strong> <code>GET /surah/:surahNumber</code></p>
         <p><strong>Headers:</strong></p>
-        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+        <pre><code>x-api-key : YOUR_API_KEY</code></pre>
+        <p><strong>Query:</strong></p>
+        <pre><code>?key : YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
         <pre><code>GET /surah/1</code></pre>
         <p><strong>Sample Response:</strong></p>
@@ -237,7 +250,9 @@ POST https://user-authentication-api-jqfm.onrender.com/api/v2/login</code></pre>
         <h3>3. Get Ayah by Surah and Verse Number</h3>
         <p><strong>Endpoint:</strong> <code>GET /{surahNumber}:{verseNumber}</code></p>
         <p><strong>Headers:</strong></p>
-        <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+        <pre><code>x-api-key : YOUR_API_KEY</code></pre>
+        <p><strong>Query:</strong></p>
+        <pre><code>?key : YOUR_API_KEY</code></pre>
         <p><strong>Example Request:</strong></p>
         <pre><code>GET /1:1</code></pre>
         <p><strong>Sample Response:</strong></p>
