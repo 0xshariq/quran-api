@@ -1,5 +1,6 @@
 import axios from "axios";
 import { reciters } from "../data/reciters.js";
+import { surahs } from "../data/surah.js";
 
 export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   const { ayah } = req.params;
@@ -187,7 +188,19 @@ export const surahImages = async (req, res) => {
       });
     }
 
-    const url = `https://ik.imagekit.io/yj5oyrbvwk/surah-images/${surahNumber}/${pageNumber}.png`;
+    const surah = surahs.find((s) => s.number === parseInt(surahNumber));
+
+    if (!surah) {
+      return res.status(404).json({
+        code: 404,
+        status: "Error",
+        message: "Surah not found. Please enter a valid Surah number.",
+      });
+    }
+
+    const surahName = `${surahNumber}.${surah.name.replace(/\s+/g, "-").replace(/'/g, "")}`; // Format name for URL
+    const url = `https://ik.imagekit.io/yj5oyrbvwk/surah-images/${surahName}/${pageNumber}.png`;
+    
     res.status(200).json({ url });
   } catch (error) {
     console.error("Error fetching surah images:", error);
@@ -198,3 +211,4 @@ export const surahImages = async (req, res) => {
     });
   }
 };
+
