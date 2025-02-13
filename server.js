@@ -37,34 +37,7 @@ app.use("/api/v2/quran", apiKeyMiddleware, quranRouter)
 
 // Root route
 app.get("/", (req, res) => {
-  res.sendFile("index.html", { root: "./public" })
-});
-
-app.get("/register", (req, res) => res.sendFile("register.html", { root: "./public" }));
-app.get("/login", (req, res) => res.sendFile("login.html", { root: "./public" }));
-
-app.post("/register", async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    const { data } = await axios.post("https://user-authentication-api-jqfm.onrender.com/api/v2/users/register", { name, email, password });
-    res.cookie("token", data.token, { httpOnly: true });
-    res.redirect("/login");
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).send("Registration failed.");
-  }
-});
-
-app.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const { data } = await axios.post("https://user-authentication-api-jqfm.onrender.com/api/v2/users/login", { email, password });
-    res.cookie("token", data.token, { httpOnly: true });
-    res.redirect("/");
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(401).send("Login failed.");
-  }
+  res.send("Welcome to the Quran API");
 });
 
 // Connect to database and start server

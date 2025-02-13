@@ -1,6 +1,7 @@
 import axios from "axios";
 import { reciters } from "../data/reciters.js";
 import { surahs } from "../data/surah.js";
+import { quran } from "../data/quran.js";
 
 export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   const { ayah } = req.params;
@@ -115,7 +116,26 @@ export const getSurahByNumber = async (req, res) => {
 
 export const getAudio = async (req, res) => {
   try {
-    const { reciter, surahNumber, verseNumber } = req.params;
+    const { reciter, number } = req.params;
+    const [surahNumber, verseNumber] = number.split(":");
+    if(!reciter) {
+      return res
+        .status(400)
+        .json({
+          code: 400,
+          status: "Error",
+          message: "Missing reciter parameter",
+    });
+    }
+    if (!surahNumber || !verseNumber) {
+      return res
+        .status(400)
+        .json({
+          code: 400,
+          status: "Error",
+          message: "Invalid ayah format. Use 'surahNumber:verseNumber'",
+        });
+    }
     const audioUrl = `https://everyayah.com/data/${reciter}/${surahNumber.padStart(3, "0")}${verseNumber.padStart(3, "0")}.mp3`;
 
     const response = await axios.get(audioUrl, { responseType: 'arraybuffer' });
@@ -212,3 +232,18 @@ export const surahImages = async (req, res) => {
   }
 };
 
+export const getQuran = async (req, res) => {
+  try {
+    res.status(200).json(quran);
+  } catch (error) {
+    console.error("Error fetching Quran data:", error);
+    res
+      .status(500)
+      .json({
+        code: 500,
+        status: "Error",
+        message: "Failed to fetch Quran data",
+      });
+    
+  }
+};
