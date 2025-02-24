@@ -4,46 +4,41 @@ import { surahs } from "../data/surah.js";
 import { quran } from "../data/quran.js";
 
 export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
-  const { ayah } = req.params;
-  const { lang } = req.query; // Extract language from query params
-
-  if (!ayah) {
-    return res.status(400).json({
-      code: 400,
-      status: "Error",
-      message: "Missing ayah parameter. Use '/surahNumber:verseNumber'",
-    });
-  }
-
-  const [surahNumber, verseNumber] = ayah.split(":");
-
-  if (!surahNumber || !verseNumber) {
-    return res.status(400).json({
-      code: 400,
-      status: "Error",
-      message: "Invalid ayah format. Use 'surahNumber:verseNumber'",
-    });
-  }
-
-  // Determine the translation identifier based on the requested language
-  let translation;
-  switch (lang) {
-    case "arabic":
-      translation = "ar.alafasy";
-      break;
-    case "eng":
-      translation = "en.asad";
-      break;
-    case "urdu":
-      translation = "ur.junagarhi";
-      break;
-    default:
-      translation = "ar.alafasy"; // Default to Arabic if no valid language is provided
-  }
-
-  const url = `http://api.alquran.cloud/v1/ayah/${surahNumber}:${verseNumber}/${translation}`;
-
   try {
+    const { ayah } = req.params;
+    const { lang } = req.query; // Extract language from query params
+
+    if (!ayah) {
+      return res.status(400).json({
+        code: 400,
+        status: "Error",
+        message: "Missing ayah parameter. Use '/surahNumber:verseNumber'",
+      });
+    }
+
+    const [surahNumber, verseNumber] = ayah.split(":");
+
+    if (!surahNumber || !verseNumber || isNaN(surahNumber) || isNaN(verseNumber)) {
+      return res.status(400).json({
+        code: 400,
+        status: "Error",
+        message: "Invalid ayah format. Use 'surahNumber:verseNumber'",
+      });
+    }
+
+    // Define the translation mapping
+    const translations = {
+      arabic: "ar.alafasy",
+      eng: "en.asad",
+      urdu: "ur.junagarhi",
+    };
+
+    // Get the correct translation or default to Arabic if not provided
+    const translation = translations[lang] || "ar.alafasy";
+
+    const url = `https://api.alquran.cloud/v1/ayah/${surahNumber}:${verseNumber}/${translation}`;
+
+    // Fetch Ayah data
     const response = await axios.get(url);
     const data = response.data;
 
@@ -52,19 +47,21 @@ export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
       const verseImage = `https://cdn.islamic.network/quran/images/${surahNumber}_${verseNumber}.png`;
       data.data.verseImage = verseImage;
 
-      res.status(200).json(data);
+      return res.status(200).json(data);
     } else {
-      res.status(data.code || 500).json(data);
+      return res.status(data.code || 500).json(data);
     }
   } catch (error) {
-    console.error("Error fetching Quran data:", error);
-    res.status(500).json({
+    console.error("Error fetching Quran data:", error.message);
+    return res.status(500).json({
       code: 500,
       status: "Error",
       message: "Failed to fetch Quran data",
+      error: error.message,
     });
   }
 };
+
 
 
 export const getSurahs = async (req, res) => {
