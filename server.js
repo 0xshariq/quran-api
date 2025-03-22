@@ -4,7 +4,6 @@ import quranRouter from "./routes/quran.js"
 import userRouter from "./routes/user.js"
 import { connectToDatabase } from "./db/database.js"
 import { apiKeyMiddleware } from "./middlewares/apiKeyMiddleware.js"
-import cookieParser from "cookie-parser"
 import { errorMiddleware } from "./middlewares/error.js"
 import cors from "cors"
 import path from "path"
@@ -22,7 +21,6 @@ const app = express()
 // Middleware
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-app.use(cookieParser())
 app.use(
   cors({
     origin: ["http://localhost:3000", process.env.FRONTEND_URL],
