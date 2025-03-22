@@ -37,7 +37,7 @@ app.use(errorMiddleware)
 // Security Middleware
 app.use(helmet()); // Adds security headers
 app.use(mongoSanitize()); // Prevents MongoDB injection attacks
-
+app.use(compression());
 // Rate Limiting - Prevents abuse
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
