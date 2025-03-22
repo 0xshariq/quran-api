@@ -8,6 +8,11 @@ import cookieParser from "cookie-parser"
 import { errorMiddleware } from "./middlewares/error.js"
 import cors from "cors"
 import path from "path"
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import mongoSanitize from "express-mongo-sanitize";
+import compression from "compression";
+import morgan from "morgan";
 
 // Load environment variables
 dotenv.config({ path: "./config.env" })
@@ -29,7 +34,21 @@ const __dirname = path.resolve()
 app.use(express.static(path.join(__dirname, "public")));
 // Error handling middleware
 app.use(errorMiddleware)
+// Security Middleware
+app.use(helmet()); // Adds security headers
+app.use(mongoSanitize()); // Prevents MongoDB injection attacks
 
+// Rate Limiting - Prevents abuse
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: "Too many requests from this IP, please try again later.",
+});
+
+app.use(limiter);
+
+// Logging Middleware
+app.use(morgan("dev"));
 // Routes
 app.use("/api/v2/users", userRouter)
 app.use("/api/v2/quran", apiKeyMiddleware, quranRouter)
