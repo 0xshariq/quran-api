@@ -8,7 +8,6 @@ import cookieParser from "cookie-parser"
 import { errorMiddleware } from "./middlewares/error.js"
 import cors from "cors"
 import path from "path"
-import axios from "axios"
 
 // Load environment variables
 dotenv.config({ path: "./config.env" })
