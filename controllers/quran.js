@@ -6,7 +6,7 @@ import { quran } from "../data/quran.js";
 export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   try {
     const { ayah } = req.params;
-    const { lang } = req.query; // Extract language from query params
+    const { lang } = req.query; 
 
     if (!ayah) {
       return res.status(400).json({
@@ -184,7 +184,7 @@ export const paraImages = async (req, res) => {
       });
     }
 
-    const url = `https://ik.imagekit.io/yj5oyrbvwk/para-images/Para-${paraNumber}/${pageNumber}.png`;
+    const url = `${process.env.IMAGEKIT_URL}/para-images/Para-${paraNumber}/${pageNumber}.png`;
     res.status(200).json({ url });
   } catch (error) {
     console.error("Error fetching para images:", error);
@@ -228,7 +228,7 @@ export const surahImages = async (req, res) => {
     }
 
     const surahName = `${surahNumber}.${surah.name.replace(/\s+/g, "-").replace(/'/g, "")}`; // Format name for URL
-    const url = `https://ik.imagekit.io/yj5oyrbvwk/surah-images/${surahName}/${pageNumber}.png`;
+    const url = `${process.env.IMAGEKIT_URL}/surah-images/${surahName}/${pageNumber}.png`;
     
     res.status(200).json({ url });
   } catch (error) {
