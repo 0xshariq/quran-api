@@ -7,6 +7,8 @@ import mongoose from 'mongoose';
 import Ayah from '../model/ayah.js';
 import Surah from '../model/surah.js';
 import AllSurah from '../model/surahs.js';
+import ParaImages from '../model/para-images.js';
+import SurahImages from '../model/surah-images.js';
 
 const MONGO_URI = process.env.QURAN_MONGODB_URI;
 if (!MONGO_URI) {
@@ -17,7 +19,9 @@ if (!MONGO_URI) {
 const valid = {
   Ayah: Ayah,
   Surah: Surah,
-  AllSurah: AllSurah
+  AllSurah: AllSurah,
+  ParaImages: ParaImages,
+  SurahImages: SurahImages
 };
 
 async function main() {
