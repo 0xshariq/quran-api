@@ -50,7 +50,7 @@ async function main() {
         page: a.page,
         ruku: a.ruku,
         hizbQuarter: a.hizbQuarter,
-        sajda: a.sajda || false,
+  sajda: (typeof a.sajda === 'object') ? a.sajda : !!a.sajda,
         verseImage: a.verseImage || null
       })),
       // include all edition metadata from data/edition.js

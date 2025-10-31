@@ -19,13 +19,13 @@ const surahSchema = new Schema({
             page: { type: Number },
             ruku: { type: Number },
             hizbQuarter: { type: Number },
-            sajda: { type: Boolean, default: false }
+            // allow sajda to be boolean or object { id, recommended, obligatory }
+            sajda: { type: Schema.Types.Mixed, default: false }
         }
     ]
     ,
     // keep an example single edition object and also the full editions list
-    edition: { type: Schema.Types.Mixed, default: null },
-    editions: { type: [Schema.Types.Mixed], default: [] }
+    edition: { type: Schema.Types.Mixed, default: null }
 });
 
 const Surah = mongoose.models.Surah || model("Surah", surahSchema);

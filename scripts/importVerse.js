@@ -116,10 +116,12 @@ async function main() {
 
   // process surahs sequentially from START_SURAH to END_SURAH
   for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
-    console.log(`Processing Surah ${surahNumber}...`);
     let surahDetail;
     try {
       surahDetail = await fetchSurahDetail(surahNumber);
+      // prefer englishName when available, fallback to name
+      const surahName = surahDetail?.englishName || surahDetail?.name || '';
+      console.log(`Processing Surah ${surahNumber} - ${surahName}...`);
     } catch (err) {
       console.error(`  Failed to fetch surah ${surahNumber}:`, err.message);
       // continue to next surah
@@ -130,7 +132,7 @@ async function main() {
     // select editions: if EDITION_LIST env provided, use it, else default
     const editionListEnv = process.env.EDITION_LIST || null;
     let identifiers = [];
-    if (editionListEnv) identifiers = editionListEnv.split(',').map(s=>s.trim()).filter(Boolean);
+    if (editionListEnv) identifiers = editionListEnv.split(',').map(s => s.trim()).filter(Boolean);
     else identifiers = DEFAULT_EDITIONS.slice();
 
     const selected = identifiers.map(id => editions.find(e => e.identifier === id)).filter(Boolean);
@@ -178,7 +180,8 @@ async function main() {
               page: t.page,
               ruku: t.ruku,
               hizbQuarter: t.hizbQuarter,
-              sajda: t.sajda || false
+              // normalize sajda: if API returns object keep it, otherwise store boolean
+              sajda: (t && typeof t.sajda === 'object') ? t.sajda : !!t.sajda
             };
             try {
               await Ayah.create(base);
@@ -200,7 +203,7 @@ async function main() {
                 try { await Ayah.updateOne({ number: t.number }, { $set: updates }); } catch (err) { console.error(`    Failed to update ayah ${t.number}:`, err.message); }
                 console.log(`    updated metadata for ayah ${t.number} (surah:${surahNumber},verse:${t.numberInSurah})`);
               } else {
-                console.log(`    skipped existing edition ${editionMeta.identifier} for ayah ${t.number}`);
+                console.log(`    skipped existing edition ${editionMeta.identifier} for surah:${surahNumber},verse:${t.numberInSurah}`);
               }
             } else {
               // push new edition

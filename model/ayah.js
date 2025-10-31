@@ -8,7 +8,6 @@ const ayahSchema = new Schema({
     verseImage: { type: String },
     // store the edition metadata (not an ObjectId) and support multiple editions
     edition: { type: Schema.Types.Mixed, default: null },
-    editions: { type: [Schema.Types.Mixed], default: [] },
     surah: {
         number: { type: Number },
         name: { type: String },
@@ -23,7 +22,9 @@ const ayahSchema = new Schema({
     page: { type: Number },
     ruku: { type: Number },
     hizbQuarter: { type: Number },
-    sajda: { type: Boolean, default: false }
+    // `sajda` can be either a boolean or an object like { id, recommended, obligatory }
+    // accept both shapes using Mixed and default to false when absent
+    sajda: { type: Schema.Types.Mixed, default: false }
 });
 
 const Ayah = mongoose.models.Ayah || model("Ayah", ayahSchema);
