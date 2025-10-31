@@ -6,10 +6,9 @@ const ayahSchema = new Schema({
     audioSecondary: { type: [String], default: [] },
     text: { type: String },
     verseImage: { type: String },
-    edition: {
-        type: Schema.Types.ObjectId,
-        ref: 'Edition'
-    },
+    // store the edition metadata (not an ObjectId) and support multiple editions
+    edition: { type: Schema.Types.Mixed, default: null },
+    editions: { type: [Schema.Types.Mixed], default: [] },
     surah: {
         number: { type: Number },
         name: { type: String },

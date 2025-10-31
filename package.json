@@ -6,7 +6,10 @@
   "main": "server.js",
   "scripts": {
     "start": "nodemon server.js",
-    "import-quran": "node ./scripts/importQuran.js"
+    "import-quran": "node ./scripts/importQuran.js",
+    "import-verse": "node ./scripts/importVerse.js",
+    "import-surah": "node ./scripts/importSurah.js",
+    "import-surahs": "node ./scripts/importSurahs.js"
   },
   "keywords": [],
   "author": "Sharique Chaudhary",

@@ -7,7 +7,8 @@ const surahSchema = new Schema({
     englishNameTranslation: { type: String },
     numberOfAyahs: { type: Number },
     revelationType: { type: String },
-    surahAudio: { type: String }, // https://cdn.islamic.network/quran/audio-surah/128/{edition}/{surahNumber}.mp3
+    // aggregated audio per edition (identifier + audio url), e.g. [{ identifier, audio }]
+    surahAudio: { type: [Schema.Types.Mixed], default: [] }, // https://cdn.islamic.network/quran/audio-surah/128/{edition}/{surahNumber}.mp3
     ayahs: [
         {
             number: { type: Number, required: true, unique: true },
@@ -22,10 +23,9 @@ const surahSchema = new Schema({
         }
     ]
     ,
-    edition: {
-        type: Schema.Types.ObjectId,
-        ref: 'Edition'
-    }
+    // keep an example single edition object and also the full editions list
+    edition: { type: Schema.Types.Mixed, default: null },
+    editions: { type: [Schema.Types.Mixed], default: [] }
 });
 
 const Surah = mongoose.models.Surah || model("Surah", surahSchema);
