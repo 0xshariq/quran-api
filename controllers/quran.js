@@ -2,11 +2,12 @@ import axios from "axios";
 import { reciters } from "../data/reciters.js";
 import { surahs } from "../data/surah.js";
 import { quran } from "../data/quran.js";
+import { editions } from "../data/edition.js";
 
 export const getAyahBySurahNumberAndVerseNumber = async (req, res) => {
   try {
     const { ayah } = req.params;
-    const { lang } = req.query; 
+    const { lang } = req.query;
 
     if (!ayah) {
       return res.status(400).json({
@@ -127,14 +128,14 @@ export const getAudio = async (req, res) => {
   try {
     const { reciter, number } = req.params;
     const [surahNumber, verseNumber] = number.split(":");
-    if(!reciter) {
+    if (!reciter) {
       return res
         .status(400)
         .json({
           code: 400,
           status: "Error",
           message: "Missing reciter parameter",
-    });
+        });
     }
     if (!surahNumber || !verseNumber) {
       return res
@@ -162,6 +163,9 @@ export const getAudio = async (req, res) => {
 };
 export const getReciters = async (req, res) => {
   res.json(reciters);
+};
+export const getEditions = async (req, res) => {
+  res.json(editions);
 };
 export const paraImages = async (req, res) => {
   try {
@@ -229,7 +233,7 @@ export const surahImages = async (req, res) => {
 
     const surahName = `${surahNumber}.${surah.name.replace(/\s+/g, "-").replace(/'/g, "")}`; // Format name for URL
     const url = `${process.env.IMAGEKIT_URL}/surah-images/${surahName}/${pageNumber}.png`;
-    
+
     res.status(200).json({ url });
   } catch (error) {
     console.error("Error fetching surah images:", error);
@@ -253,6 +257,6 @@ export const getQuran = async (req, res) => {
         status: "Error",
         message: "Failed to fetch Quran data",
       });
-    
+
   }
 };
