@@ -2,17 +2,19 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: process.env.CONFIG_PATH || path.join(process.cwd(), 'config.env') });
 
-import mongoose from 'mongoose';
 import axios from 'axios';
-import Ayah from '../model/ayah.js';
-import Surah from '../model/surah.js';
+// set a reasonable default timeout for network requests (ms)
+axios.defaults.timeout = parseInt(process.env.AXIOS_TIMEOUT || '15000', 10);
+import fs from 'fs/promises';
 import { editions } from '../data/edition.js';
 
-const MONGO_URI = process.env.QURAN_MONGODB_URI;
-if (!MONGO_URI) {
-  console.error('Missing QURAN_MONGODB_URI in config.env');
-  process.exit(1);
-}
+// data paths
+const DATA_AYAH_DIR = path.join(process.cwd(), 'data', 'verses');
+const DATA_VERSE_INDEX = path.join(process.cwd(), 'data', 'verse.json');
+
+async function ensureDir(dir) { try { await fs.mkdir(dir, { recursive: true }); } catch (e) { } }
+async function writeJson(file, obj) { await ensureDir(path.dirname(file)); await fs.writeFile(file, JSON.stringify(obj, null, 2), 'utf8'); }
+async function readJson(file) { try { const t = await fs.readFile(file, 'utf8'); return JSON.parse(t); } catch (e) { return null; } }
 
 // Controls
 // AYAH_DELAY_MS: ms to wait between individual ayah requests (default 300ms)
@@ -22,16 +24,45 @@ const SLEEP_MS = parseInt(process.env.AYAH_DELAY_MS || '300', 10);
 const EDITION_DELAY_MS = parseInt(process.env.EDITION_DELAY_MS || '1000', 10);
 const START_SURAH = 1; // start from first surah
 const END_SURAH = 114; // end at 114
-const DEFAULT_EDITIONS = ['ar.alafasy'];
 const MAX_RETRIES = 4;
+const VALID_AUDIO_BITRATES = ['192', '128', '64', '48', '40', '32'];
+// flexible parsing: accept '128', 128, or '128kbps'
+let AUDIO_BITRATE = (process.env.AUDIO_BITRATE || '128').toString();
+const matchDigits = AUDIO_BITRATE.match(/(\d+)/);
+if (matchDigits) AUDIO_BITRATE = matchDigits[1];
+if (!VALID_AUDIO_BITRATES.includes(AUDIO_BITRATE)) {
+  console.warn(`AUDIO_BITRATE '${process.env.AUDIO_BITRATE}' is invalid — falling back to '128' (valid: ${VALID_AUDIO_BITRATES.join(',')})`);
+  AUDIO_BITRATE = '128';
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function readJsonFile(file) {
+  try {
+    const txt = await fs.readFile(file, 'utf8');
+    return JSON.parse(txt);
+  } catch (err) {
+    return null;
+  }
+}
+
+async function writeJsonFile(file, obj) {
+  await ensureDir(path.dirname(file));
+  await fs.writeFile(file, JSON.stringify(obj, null, 2), 'utf8');
+}
 
 async function fetchSurahDetail(number) {
   const url = `http://api.alquran.cloud/v1/surah/${number}`;
   const res = await axios.get(url);
   if (res.data && res.data.code === 200) return res.data.data;
   throw new Error(`Failed to fetch surah ${number}`);
+}
+
+async function fetchAllSurahMeta() {
+  const url = `http://api.alquran.cloud/v1/surah`;
+  const res = await axios.get(url);
+  if (res.data && res.data.code === 200) return res.data.data;
+  throw new Error('Failed to fetch surah list');
 }
 
 async function fetchAyah(surahNumber, verseNumber, translation) {
@@ -42,18 +73,31 @@ async function fetchAyah(surahNumber, verseNumber, translation) {
     try {
       const res = await axios.get(url);
       if (res.data && res.data.code === 200) return res.data.data;
+      // if API responds but not 200, treat as no-data
       return null;
     } catch (err) {
       lastErr = err;
+      const status = err.response && err.response.status;
       // if rate limited, backoff
-      if (err.response && err.response.status === 429) {
+      if (status === 429) {
         const backoff = 500 * Math.pow(2, attempt); // exponential
         console.warn(`      429 received for ${surahNumber}:${verseNumber} (${translation}), backoff ${backoff}ms`);
         await sleep(backoff);
         attempt++;
         continue;
       }
-      // other errors, break
+
+      // if transient network error or 5xx, retry with backoff
+      const transient = !err.response || (status >= 500 && status < 600) || err.code === 'ECONNRESET' || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || err.code === 'EAI_AGAIN';
+      if (transient && attempt < MAX_RETRIES) {
+        const backoff = 300 * Math.pow(2, attempt);
+        console.warn(`      transient error for ${surahNumber}:${verseNumber} (${translation}): ${err.message}, retrying in ${backoff}ms`);
+        await sleep(backoff);
+        attempt++;
+        continue;
+      }
+
+      // not recoverable or max attempts reached
       break;
     }
   }
@@ -61,172 +105,130 @@ async function fetchAyah(surahNumber, verseNumber, translation) {
   return null;
 }
 
-async function upsertEditionForAyah(ayahNumber, editionEntry) {
-  // editionEntry: { identifier, audio, audioSecondary, text, editionMeta }
-  const existing = await Ayah.findOne({ number: ayahNumber }).lean();
-
-  if (!existing) {
-    // create base ayah doc with minimal fields plus editions array
-    const base = {
-      number: ayahNumber,
-      audio: editionEntry.audio || null,
-      audioSecondary: editionEntry.audioSecondary || [],
-      text: editionEntry.text || null,
-      verseImage: null,
-      edition: editionEntry.editionMeta || null,
-      editions: [editionEntry],
-    };
-    try {
-      await Ayah.create(base);
-      return true;
-    } catch (err) {
-      console.error(`    Create ayah ${ayahNumber} failed:`, err.message);
-      return false;
-    }
-  }
-
-  // if edition already exists, skip
-  const hasEdition = (existing.editions || []).some(e => e && e.identifier === editionEntry.identifier);
-  if (hasEdition) return false;
-
-  try {
-    await Ayah.updateOne({ number: ayahNumber }, { $push: { editions: editionEntry } });
-    return true;
-  } catch (err) {
-    console.error(`    Failed to push edition for ayah ${ayahNumber}:`, err.message);
-    return false;
-  }
-}
+// legacy helper removed - storing directly to JSON files instead of DB
 
 async function main() {
-  await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB');
+  // ensure data folders exist
+  await ensureDir(DATA_AYAH_DIR);
+  console.log('Storing per-edition verse files under', DATA_AYAH_DIR);
 
-  // optional: clear previous data if requested
-  if (process.env.CLEAR_DB === 'true') {
-    console.log('CLEAR_DB=true: deleting Ayah and Surah collections...');
-    try {
-      await Ayah.deleteMany({});
-      await Surah.deleteMany({});
-      console.log('  Collections cleared');
-    } catch (err) {
-      console.error('  Failed to clear collections:', err.message);
-    }
+  // process editions one-by-one: fetch all verses for an edition, write file, then move to next
+  const editionListEnv = process.env.EDITION_LIST || null;
+  let selectedEditions = [];
+  if (editionListEnv) {
+    const identifiers = editionListEnv.split(',').map(s => s.trim()).filter(Boolean);
+    selectedEditions = identifiers.map(id => editions.find(e => e.identifier === id)).filter(Boolean);
+  } else {
+    selectedEditions = editions.slice();
   }
 
-  // process surahs sequentially from START_SURAH to END_SURAH
-  for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
-    let surahDetail;
-    try {
-      surahDetail = await fetchSurahDetail(surahNumber);
-      // prefer englishName when available, fallback to name
-      const surahName = surahDetail?.englishName || surahDetail?.name || '';
-      console.log(`Processing Surah ${surahNumber} - ${surahName}...`);
-    } catch (err) {
-      console.error(`  Failed to fetch surah ${surahNumber}:`, err.message);
-      // continue to next surah
+  // fetch surah metadata once
+  const surahMeta = await fetchAllSurahMeta().catch(() => null) || [];
+  const TOTAL_AYAHS = surahMeta.length ? surahMeta.reduce((s, x) => s + (x.numberOfAyahs || 0), 0) : null;
+
+  for (const editionMeta of selectedEditions) {
+    const editionId = editionMeta.identifier;
+    console.log(`Starting edition ${editionId} — will fetch all verses then write ${editionId}.json`);
+    // load previous buffer to resume if exists
+    const bufferFile = path.join(DATA_AYAH_DIR, `${editionId}.json`);
+    const buffer = await readJson(bufferFile) || [];
+    const seen = new Set(buffer.map(b => b.number));
+    // expose current buffer for the signal handler
+    let currentBuffer = buffer;
+
+    // on interrupt, persist current buffer to disk
+    const saveAndExit = async () => {
+      try {
+        if (currentBuffer) {
+          await writeJson(bufferFile, currentBuffer);
+          console.log(`\nSaved progress for ${editionId}: ${currentBuffer.length} verses to ${bufferFile}`);
+        }
+      } catch (e) { console.error('Failed to save progress on exit:', e.message); }
+      process.exit(0);
+    };
+    process.once('SIGINT', saveAndExit);
+    process.once('SIGTERM', saveAndExit);
+
+    // if we already have a complete edition file (all ayahs), skip re-fetching
+    if (TOTAL_AYAHS && buffer.length >= TOTAL_AYAHS) {
+      console.log(`  Edition ${editionId} already has ${buffer.length} ayahs (expected ${TOTAL_AYAHS}). Skipping.`);
       continue;
     }
 
-    const ayahs = surahDetail.ayahs || [];
-    // select editions: if EDITION_LIST env provided, use it, else default
-    const editionListEnv = process.env.EDITION_LIST || null;
-    let identifiers = [];
-    if (editionListEnv) identifiers = editionListEnv.split(',').map(s => s.trim()).filter(Boolean);
-    else identifiers = DEFAULT_EDITIONS.slice();
-
-    const selected = identifiers.map(id => editions.find(e => e.identifier === id)).filter(Boolean);
-
-    for (const editionMeta of selected) {
-      console.log(`  Importing edition ${editionMeta.identifier} for surah ${surahNumber} (${ayahs.length} ayahs)`);
-      for (const ay of ayahs) {
-        const verse = ay.numberInSurah;
+    for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
+      const meta = surahMeta.find(s => s.number === surahNumber);
+      let numAyahs = meta ? meta.numberOfAyahs : null;
+      if (!numAyahs) {
+        try { const sd = await fetchSurahDetail(surahNumber); numAyahs = sd.ayahs.length; } catch (e) { console.warn(`  Could not get ayah count for surah ${surahNumber}:`, e.message); continue; }
+      }
+      console.log(`  Fetching Surah ${surahNumber} (${numAyahs} ayahs)`);
+      for (let verse = 1; verse <= numAyahs; verse++) {
         try {
-          const t = await fetchAyah(surahNumber, verse, editionMeta.identifier);
-          if (!t) { console.warn(`    no data for ${editionMeta.identifier} ${surahNumber}:${verse}`); await sleep(SLEEP_MS); continue; }
-
+          const t = await fetchAyah(surahNumber, verse, editionId);
+          if (!t) { console.warn(`    no data for ${editionId} ${surahNumber}:${verse}`); await sleep(SLEEP_MS); continue; }
+          if (seen.has(t.number)) { /* already have this ayah */ await sleep(SLEEP_MS); continue; }
           const verseImage = `https://cdn.islamic.network/quran/images/${surahNumber}_${verse}.png`;
-
-          const editionEntry = {
-            identifier: editionMeta.identifier,
+          const ayahObj = {
+            number: t.number,
+            numberInSurah: t.numberInSurah,
+            juz: t.juz,
+            manzil: t.manzil,
+            page: t.page,
+            ruku: t.ruku,
+            hizbQuarter: t.hizbQuarter,
+            sajda: (t && typeof t.sajda === 'object') ? t.sajda : !!t.sajda,
+            text: t.text || null,
             audio: t.audio || null,
             audioSecondary: t.audioSecondary || [],
-            text: t.text || null,
-            editionMeta: editionMeta
+            verseImage,
+            surah: {
+              number: surahNumber,
+              name: meta?.name || null,
+              englishName: meta?.englishName || null,
+              englishNameTranslation: meta?.englishNameTranslation || null,
+              numberOfAyahs: meta?.numberOfAyahs || numAyahs,
+              revelationType: meta?.revelationType || null
+            },
+            edition: editionMeta.identifier,
+            editionMeta: editionMeta,
+            verseAudioUrl: `https://cdn.islamic.network/quran/audio/${AUDIO_BITRATE}/${editionMeta.identifier}/${t.number}.mp3`
           };
-
-          // create or update ayah with full fields
-          const existing = await Ayah.findOne({ number: t.number }).lean();
-          if (!existing) {
-            const base = {
-              number: t.number,
-              audio: editionEntry.audio || null,
-              audioSecondary: editionEntry.audioSecondary || [],
-              text: editionEntry.text || null,
-              verseImage,
-              edition: editionEntry.editionMeta || null,
-              editions: [editionEntry],
-              surah: {
-                number: surahDetail.number,
-                name: surahDetail.name,
-                englishName: surahDetail.englishName,
-                englishNameTranslation: surahDetail.englishNameTranslation,
-                numberOfAyahs: surahDetail.numberOfAyahs,
-                revelationType: surahDetail.revelationType
-              },
-              numberInSurah: t.numberInSurah,
-              juz: t.juz,
-              manzil: t.manzil,
-              page: t.page,
-              ruku: t.ruku,
-              hizbQuarter: t.hizbQuarter,
-              // normalize sajda: if API returns object keep it, otherwise store boolean
-              sajda: (t && typeof t.sajda === 'object') ? t.sajda : !!t.sajda
-            };
-            try {
-              await Ayah.create(base);
-              console.log(`    created ayah ${t.number} (surah:${surahNumber},verse:${t.numberInSurah}) (edition ${editionMeta.identifier})`);
-            } catch (err) {
-              console.error(`    Create ayah ${t.number} (surah:${surahNumber},verse:${t.numberInSurah}) failed:`, err.message);
-            }
-          } else {
-            // check if edition exists
-            const hasEdition = (existing.editions || []).some(e => e && e.identifier === editionEntry.identifier);
-            if (hasEdition) {
-              // already have this edition for this ayah
-              // ensure verseImage and main text/audio exist
-              const updates = {};
-              if (!existing.verseImage) updates.verseImage = verseImage;
-              if (!existing.audio && editionEntry.audio) updates.audio = editionEntry.audio;
-              if (!existing.text && editionEntry.text) updates.text = editionEntry.text;
-              if (Object.keys(updates).length > 0) {
-                try { await Ayah.updateOne({ number: t.number }, { $set: updates }); } catch (err) { console.error(`    Failed to update ayah ${t.number}:`, err.message); }
-                console.log(`    updated metadata for ayah ${t.number} (surah:${surahNumber},verse:${t.numberInSurah})`);
-              } else {
-                console.log(`    skipped existing edition ${editionMeta.identifier} for surah:${surahNumber},verse:${t.numberInSurah}`);
-              }
-            } else {
-              // push new edition
-              try {
-                await Ayah.updateOne({ number: t.number }, { $push: { editions: editionEntry } });
-                console.log(`    pushed edition ${editionMeta.identifier} for ayah ${t.number} (surah:${surahNumber},verse:${t.numberInSurah})`);
-              } catch (err) {
-                console.error(`    Failed to push edition for ayah ${t.number}:`, err.message);
-              }
-            }
-          }
+          buffer.push(ayahObj);
+          seen.add(t.number);
         } catch (err) {
-          console.error(`    Warning: failed to fetch ayah ${surahNumber}:${verse}:`, err.message);
+          console.error(`    Warning: failed to fetch ayah ${surahNumber}:${verse} for ${editionId}:`, err.message);
         }
         await sleep(SLEEP_MS);
       }
-      // wait a bit between editions to reduce pressure on external API
-      await sleep(EDITION_DELAY_MS);
+      // after each surah, persist current buffer to disk so progress is not lost
+      try {
+        await writeJson(bufferFile, buffer);
+        // refresh currentBuffer reference
+        currentBuffer = buffer;
+      } catch (e) {
+        console.error(`  Failed to persist progress for ${editionId} after surah ${surahNumber}:`, e.message);
+      }
     }
-    // surah finished, move to next surah
+
+    // after fetching all surahs for this edition, write file and update index
+    try {
+      await writeJson(bufferFile, buffer);
+      console.log(`Wrote ${buffer.length} verses to ${bufferFile}`);
+      const verseIndex = (await readJson(DATA_VERSE_INDEX)) || [];
+      const existing = verseIndex.find(i => i.identifier === editionId);
+      if (existing) { existing.path = `data/verses/${editionId}.json`; existing.count = buffer.length; }
+      else verseIndex.push({ identifier: editionId, path: `data/verses/${editionId}.json`, count: buffer.length });
+      await writeJson(DATA_VERSE_INDEX, verseIndex);
+    } catch (err) {
+      console.error('  Failed to write per-edition verse file or update index:', err.message);
+    }
+
+    // wait between editions
+    await sleep(EDITION_DELAY_MS);
+    // remove signal handlers for this edition to avoid accumulation
+    try { process.removeListener('SIGINT', saveAndExit); process.removeListener('SIGTERM', saveAndExit); } catch (e) { }
   }
 
-  await mongoose.disconnect();
   console.log('Done');
   process.exit(0);
 }

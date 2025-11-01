@@ -1,88 +1,92 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs/promises';
+import { editions } from '../data/edition.js';
 dotenv.config({ path: process.env.CONFIG_PATH || path.join(process.cwd(), 'config.env') });
 
-import mongoose from 'mongoose';
-import Surah from '../model/surah.js';
-import Ayah from '../model/ayah.js';
-import { editions } from '../data/edition.js';
+
+const DATA_VERSE_DIR = path.join(process.cwd(), 'data', 'verses');
+const DATA_SURAH_DIR = path.join(process.cwd(), 'data', 'surah');
+const DATA_SURAH_INDEX = path.join(process.cwd(), 'data', 'surah.json');
+const VALID_AUDIO_BITRATES = ['192','128','64','48','40','32'];
+let AUDIO_BITRATE = (process.env.AUDIO_BITRATE || '128').toString();
+const _m = AUDIO_BITRATE.match(/(\d+)/);
+if (_m) AUDIO_BITRATE = _m[1];
+if (!VALID_AUDIO_BITRATES.includes(AUDIO_BITRATE)) {
+  console.warn(`AUDIO_BITRATE '${process.env.AUDIO_BITRATE}' is invalid — falling back to '128' (valid: ${VALID_AUDIO_BITRATES.join(',')})`);
+  AUDIO_BITRATE = '128';
+}
+
+async function ensureDir(dir) { try { await fs.mkdir(dir, { recursive: true }); } catch (e) {} }
+
+async function readJson(file) { try { const t = await fs.readFile(file, 'utf8'); return JSON.parse(t); } catch (e) { return null; } }
+async function writeJson(file, obj) { await ensureDir(path.dirname(file)); await fs.writeFile(file, JSON.stringify(obj, null, 2), 'utf8'); }
 
 // small delay between surah upserts to avoid DB write bursts (ms)
 const SURAH_DELAY_MS = parseInt(process.env.SURAH_DELAY_MS || '100', 10);
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-const MONGO_URI = process.env.QURAN_MONGODB_URI;
-if (!MONGO_URI) {
-  console.error('Missing QURAN_MONGODB_URI in config.env');
-  process.exit(1);
-}
-
 async function main() {
-  await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB');
+  await ensureDir(DATA_SURAH_DIR);
+  console.log('Building per-edition surah files and writing to', DATA_SURAH_DIR);
 
-  const START_SURAH = 1;
-  const END_SURAH = 114;
-
-  for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
-    console.log(`Building Surah ${surahNumber} from Ayah collection...`);
-    const ayahs = await Ayah.find({ 'surah.number': surahNumber }).sort({ numberInSurah: 1 }).lean();
-    if (!ayahs || ayahs.length === 0) {
-      console.warn(`  No ayahs found in DB for surah ${surahNumber}. Skipping (run import-verse first).`);
+  for (const editionMeta of editions) {
+    const editionId = editionMeta.identifier;
+    console.log(`Processing edition ${editionId} -> building surah file...`);
+    const verseFile = path.join(DATA_VERSE_DIR, `${editionId}.json`);
+    const editionAyahs = await readJson(verseFile) || [];
+    if (!editionAyahs || editionAyahs.length === 0) {
+      console.warn(`  No verses found for edition ${editionId} in ${verseFile}. Run import-verse first or provide edition list.`);
       continue;
     }
 
-    const sample = ayahs[0];
-    const surahDoc = {
-      number: surahNumber,
-      name: sample?.surah?.name || null,
-      englishName: sample?.surah?.englishName || null,
-      englishNameTranslation: sample?.surah?.englishNameTranslation || null,
-      numberOfAyahs: sample?.surah?.numberOfAyahs || ayahs.length,
-      revelationType: sample?.surah?.revelationType || null,
-      ayahs: ayahs.map(a => ({
-        number: a.number,
-        text: a.text,
-        numberInSurah: a.numberInSurah,
-        juz: a.juz,
-        manzil: a.manzil,
-        page: a.page,
-        ruku: a.ruku,
-        hizbQuarter: a.hizbQuarter,
-  sajda: (typeof a.sajda === 'object') ? a.sajda : !!a.sajda,
-        verseImage: a.verseImage || null
-      })),
-      // include all edition metadata from data/edition.js
-      editions: editions.slice(),
-    };
+    // if surah index already lists this edition as complete (114 surahs), skip
+    const surahIndex = (await readJson(DATA_SURAH_INDEX)) || [];
+    const existingIndex = surahIndex.find(i => i.identifier === editionId);
+    if (existingIndex && existingIndex.surahCount >= 114) {
+      console.log(`  Skipping edition ${editionId} — surah file already exists with ${existingIndex.surahCount} surahs`);
+      continue;
+    }
 
-    // build surahAudio: aggregate for editions which have audio in ayahs (first occurrence)
-    const audioMap = new Map();
-    for (const a of ayahs) {
-      for (const ed of (a.editions || [])) {
-        if (ed && ed.identifier && ed.audio && !audioMap.has(ed.identifier)) audioMap.set(ed.identifier, ed.audio);
+    // group by surah number
+    const surahMap = new Map();
+    for (const a of editionAyahs) {
+      const sn = a.surah.number;
+      if (!surahMap.has(sn)) surahMap.set(sn, { number: sn, name: a.surah.name, englishName: a.surah.englishName, englishNameTranslation: a.surah.englishNameTranslation, numberOfAyahs: a.surah.numberOfAyahs || 0, revelationType: a.surah.revelationType, ayahs: [] });
+      const cur = surahMap.get(sn);
+      // avoid duplicate ayahs with same number
+      if (!cur.ayahs.some(x => x.number === a.number)) {
+        cur.ayahs.push({ number: a.number, numberInSurah: a.numberInSurah, text: a.text, audio: a.audio, audioSecondary: a.audioSecondary || [], sajda: a.sajda, verseImage: a.verseImage });
       }
     }
-    if (audioMap.size > 0) {
-      surahDoc.surahAudio = Array.from(audioMap.entries()).map(([identifier, audio]) => ({ identifier, audio }));
-    } else {
-      surahDoc.surahAudio = [];
-    }
 
-    // upsert surah - avoids duplicates using upsert by number
+    const surahArr = Array.from(surahMap.keys()).sort((x,y)=>x-y).map(k=>{
+      const s = surahMap.get(k);
+      // add surah-level audio for this edition
+      s.surahAudioUrl = `https://cdn.islamic.network/quran/audio-surah/${AUDIO_BITRATE}/${editionId}/${s.number}.mp3`;
+      return s;
+    });
+
+    // write per-edition surah file
+    const outFile = path.join(DATA_SURAH_DIR, `${editionId}.json`);
     try {
-      await Surah.findOneAndUpdate({ number: surahDoc.number }, surahDoc, { upsert: true, new: true, setDefaultsOnInsert: true });
-      console.log(`  Surah ${surahDoc.number} upserted with ${surahDoc.ayahs.length} ayahs`);
+      await writeJson(outFile, surahArr);
+      console.log(`  Wrote ${surahArr.length} surahs for edition ${editionId} to ${outFile}`);
     } catch (err) {
-      console.error(`  Failed to upsert Surah ${surahNumber}:`, err.message);
+      console.error(`  Failed to write surah file for ${editionId}:`, err.message);
     }
 
-    // small pause between surah operations
+  // update surah index (re-read to avoid races)
+  const updatedSurahIndex = (await readJson(DATA_SURAH_INDEX)) || [];
+  const existing = updatedSurahIndex.find(i => i.identifier === editionId);
+  if (existing) { existing.path = `data/surah/${editionId}.json`; existing.surahCount = surahArr.length; }
+  else updatedSurahIndex.push({ identifier: editionId, path: `data/surah/${editionId}.json`, surahCount: surahArr.length });
+  try { await writeJson(DATA_SURAH_INDEX, updatedSurahIndex); } catch (err) { console.error('  Failed to update surah index:', err.message); }
+
     await sleep(SURAH_DELAY_MS);
   }
 
-  await mongoose.disconnect();
   console.log('Done');
   process.exit(0);
 }
