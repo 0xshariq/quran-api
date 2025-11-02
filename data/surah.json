@@ -3,5 +3,20 @@
     "identifier": "ar.muyassar",
     "path": "data/surah/ar.muyassar.json",
     "surahCount": 114
+  },
+  {
+    "identifier": "az.mammadaliyev",
+    "path": "data/surah/az.mammadaliyev.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "az.musayev",
+    "path": "data/surah/az.musayev.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "bn.bengali",
+    "path": "data/surah/bn.bengali.json",
+    "surahCount": 114
   }
 ]
