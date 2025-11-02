@@ -3,5 +3,10 @@
     "identifier": "ar.muyassar",
     "path": "data/verses/ar.muyassar.json",
     "count": 6236
+  },
+  {
+    "identifier": "az.mammadaliyev",
+    "path": "data/verses/az.mammadaliyev.json",
+    "count": 6236
   }
 ]

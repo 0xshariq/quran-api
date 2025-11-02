@@ -18,15 +18,6 @@ export const editions = [
       "direction": "ltr"
     },
     {
-      "identifier": "ar.alafasy",
-      "language": "ar",
-      "name": "مشاري العفاسي",
-      "englishName": "Alafasy",
-      "format": "audio",
-      "type": "versebyverse",
-      "direction": null
-    },
-    {
       "identifier": "az.musayev",
       "language": "az",
       "name": "Musayev",
@@ -1003,6 +994,15 @@ export const editions = [
       "language": "ar",
       "name": "أحمد بن علي العجمي",
       "englishName": "Ahmed ibn Ali al-Ajamy",
+      "format": "audio",
+      "type": "versebyverse",
+      "direction": null
+    },
+    {
+      "identifier": "ar.alafasy",
+      "language": "ar",
+      "name": "مشاري العفاسي",
+      "englishName": "Alafasy",
       "format": "audio",
       "type": "versebyverse",
       "direction": null
