@@ -126,6 +126,20 @@ async function main() {
   const surahMeta = await fetchAllSurahMeta().catch(() => null) || [];
   const TOTAL_AYAHS = surahMeta.length ? surahMeta.reduce((s, x) => s + (x.numberOfAyahs || 0), 0) : null;
 
+  // Setup signal handlers once for all editions (not per-edition)
+  let currentEditionState = null;
+  const saveAndExit = async () => {
+    try {
+      if (currentEditionState) {
+        await writeJson(currentEditionState.bufferFile, currentEditionState.buffer);
+        console.log(`\nSaved progress for ${currentEditionState.editionId}: ${currentEditionState.buffer.length} verses to ${currentEditionState.bufferFile}`);
+      }
+    } catch (e) { console.error('Failed to save progress on exit:', e.message); }
+    process.exit(0);
+  };
+  process.once('SIGINT', saveAndExit);
+  process.once('SIGTERM', saveAndExit);
+
   for (const editionMeta of selectedEditions) {
     const editionId = editionMeta.identifier;
     console.log(`Starting edition ${editionId} — will fetch all verses then write ${editionId}.json`);
@@ -133,21 +147,8 @@ async function main() {
     const bufferFile = path.join(DATA_AYAH_DIR, `${editionId}.json`);
     const buffer = await readJson(bufferFile) || [];
     const seen = new Set(buffer.map(b => b.number));
-    // expose current buffer for the signal handler
-    let currentBuffer = buffer;
-
-    // on interrupt, persist current buffer to disk
-    const saveAndExit = async () => {
-      try {
-        if (currentBuffer) {
-          await writeJson(bufferFile, currentBuffer);
-          console.log(`\nSaved progress for ${editionId}: ${currentBuffer.length} verses to ${bufferFile}`);
-        }
-      } catch (e) { console.error('Failed to save progress on exit:', e.message); }
-      process.exit(0);
-    };
-    process.once('SIGINT', saveAndExit);
-    process.once('SIGTERM', saveAndExit);
+    // expose current edition state to signal handler
+    currentEditionState = { editionId, bufferFile, buffer };
 
     // if we already have a complete edition file (all ayahs), skip re-fetching
     if (TOTAL_AYAHS && buffer.length >= TOTAL_AYAHS) {
@@ -203,8 +204,8 @@ async function main() {
       // after each surah, persist current buffer to disk so progress is not lost
       try {
         await writeJson(bufferFile, buffer);
-        // refresh currentBuffer reference
-        currentBuffer = buffer;
+        // update shared state for signal handler
+        currentEditionState.buffer = buffer;
       } catch (e) {
         console.error(`  Failed to persist progress for ${editionId} after surah ${surahNumber}:`, e.message);
       }
@@ -225,10 +226,10 @@ async function main() {
 
     // wait between editions
     await sleep(EDITION_DELAY_MS);
-    // remove signal handlers for this edition to avoid accumulation
-    try { process.removeListener('SIGINT', saveAndExit); process.removeListener('SIGTERM', saveAndExit); } catch (e) { }
   }
 
+  // clear signal handler reference after all editions complete
+  currentEditionState = null;
   console.log('Done');
   process.exit(0);
 }

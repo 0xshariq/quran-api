@@ -18,5 +18,35 @@
     "identifier": "bn.bengali",
     "path": "data/surah/bn.bengali.json",
     "surahCount": 114
+  },
+  {
+    "identifier": "cs.hrbek",
+    "path": "data/surah/cs.hrbek.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "cs.nykl",
+    "path": "data/surah/cs.nykl.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "de.aburida",
+    "path": "data/surah/de.aburida.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "de.bubenheim",
+    "path": "data/surah/de.bubenheim.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "de.khoury",
+    "path": "data/surah/de.khoury.json",
+    "surahCount": 114
+  },
+  {
+    "identifier": "de.zaidan",
+    "path": "data/surah/de.zaidan.json",
+    "surahCount": 114
   }
 ]
