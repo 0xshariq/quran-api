@@ -20,12 +20,13 @@ async function readJson(file) { try { const t = await fs.readFile(file, 'utf8');
 // AYAH_DELAY_MS: ms to wait between individual ayah requests (default 300ms)
 // EDITION_DELAY_MS: ms to wait between editions for the same surah (default 1000ms)
 // CLEAR_DB=true will wipe Ayah and Surah collections before starting
-const SLEEP_MS = parseInt(process.env.AYAH_DELAY_MS || '300', 10);
+const SLEEP_MS = parseInt(process.env.AYAH_DELAY_MS || '0', 10); // Default to 0 for max speed
 const EDITION_DELAY_MS = parseInt(process.env.EDITION_DELAY_MS || '1000', 10);
 const START_SURAH = 1; // start from first surah
 const END_SURAH = 114; // end at 114
 const MAX_RETRIES = 4;
 const CHECKPOINT_INTERVAL = parseInt(process.env.CHECKPOINT_INTERVAL || '1', 10); // Save after every surah by default
+const CONCURRENT_REQUESTS = parseInt(process.env.CONCURRENT_REQUESTS || '10', 10); // Parallel requests per surah
 const VALID_AUDIO_BITRATES = ['192', '128', '64', '48', '40', '32'];
 // flexible parsing: accept '128', 128, or '128kbps'
 let AUDIO_BITRATE = (process.env.AUDIO_BITRATE || '128').toString();
@@ -92,6 +93,18 @@ async function fetchAyah(surahNumber, verseNumber, translation) {
   return null;
 }
 
+// Fetch multiple verses concurrently in batches
+async function fetchVersesBatch(surahNumber, verses, editionId) {
+  const results = await Promise.allSettled(
+    verses.map(verse => fetchAyah(surahNumber, verse, editionId))
+  );
+  return results.map((result, idx) => ({
+    verse: verses[idx],
+    data: result.status === 'fulfilled' ? result.value : null,
+    error: result.status === 'rejected' ? result.reason : null
+  }));
+}
+
 // legacy helper removed - storing directly to JSON files instead of DB
 
 async function main() {
@@ -144,11 +157,45 @@ async function main() {
       }
 
       console.log(`  Fetching Surah ${surahNumber} (${numAyahs} ayahs)`);
+      
+      // Determine which verses to fetch (skip already fetched ones)
+      const versesToFetch = [];
       for (let verse = 1; verse <= numAyahs; verse++) {
-        try {
-          const t = await fetchAyah(surahNumber, verse, editionId);
-          if (!t) { console.warn(`    no data for ${editionId} ${surahNumber}:${verse}`); await sleep(SLEEP_MS); continue; }
-          if (seen.has(t.number)) { /* already have this ayah */ await sleep(SLEEP_MS); continue; }
+        // Calculate absolute verse number to check if already in buffer
+        const expectedNumber = buffer.find(v => v.surah.number === surahNumber && v.numberInSurah === verse);
+        if (!expectedNumber) {
+          versesToFetch.push(verse);
+        }
+      }
+      
+      if (versesToFetch.length === 0) {
+        console.log(`  All verses already fetched for Surah ${surahNumber}`);
+        continue;
+      }
+      
+      // Fetch verses in concurrent batches
+      let fetchedCount = 0;
+      for (let i = 0; i < versesToFetch.length; i += CONCURRENT_REQUESTS) {
+        const batch = versesToFetch.slice(i, i + CONCURRENT_REQUESTS);
+        const results = await fetchVersesBatch(surahNumber, batch, editionId);
+        
+        for (const result of results) {
+          const { verse, data: t, error } = result;
+          
+          if (error) {
+            console.error(`    Warning: failed to fetch ayah ${surahNumber}:${verse} for ${editionId}:`, error.message);
+            continue;
+          }
+          
+          if (!t) {
+            console.warn(`    no data for ${editionId} ${surahNumber}:${verse}`);
+            continue;
+          }
+          
+          if (seen.has(t.number)) {
+            continue; // already have this ayah
+          }
+          
           const verseImage = `https://cdn.islamic.network/quran/images/${surahNumber}_${verse}.png`;
           const ayahObj = {
             number: t.number,
@@ -177,12 +224,14 @@ async function main() {
           };
           buffer.push(ayahObj);
           seen.add(t.number);
-          // Update progress on same line
-          process.stdout.write(`\r    Progress: ${verse}/${numAyahs} ayahs`);
-        } catch (err) {
-          console.error(`    Warning: failed to fetch ayah ${surahNumber}:${verse} for ${editionId}:`, err.message);
+          fetchedCount++;
         }
-        await sleep(SLEEP_MS);
+        
+        // Update progress on same line
+        process.stdout.write(`\r    Progress: ${fetchedCount}/${versesToFetch.length} ayahs`);
+        
+        // Small delay between batches to avoid overwhelming the API
+        if (SLEEP_MS > 0) await sleep(SLEEP_MS);
       }
       console.log(''); // New line after progress completes
       
