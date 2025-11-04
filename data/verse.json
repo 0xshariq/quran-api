@@ -18,5 +18,35 @@
     "identifier": "bn.bengali",
     "path": "data/verses/bn.bengali.json",
     "count": 6236
+  },
+  {
+    "identifier": "cs.hrbek",
+    "path": "data/verses/cs.hrbek.json",
+    "count": 6236
+  },
+  {
+    "identifier": "cs.nykl",
+    "path": "data/verses/cs.nykl.json",
+    "count": 6236
+  },
+  {
+    "identifier": "de.aburida",
+    "path": "data/verses/de.aburida.json",
+    "count": 6236
+  },
+  {
+    "identifier": "de.bubenheim",
+    "path": "data/verses/de.bubenheim.json",
+    "count": 6236
+  },
+  {
+    "identifier": "de.khoury",
+    "path": "data/verses/de.khoury.json",
+    "count": 6236
+  },
+  {
+    "identifier": "de.zaidan",
+    "path": "data/verses/de.zaidan.json",
+    "count": 6236
   }
 ]
