@@ -37,20 +37,6 @@ if (!VALID_AUDIO_BITRATES.includes(AUDIO_BITRATE)) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function readJsonFile(file) {
-  try {
-    const txt = await fs.readFile(file, 'utf8');
-    return JSON.parse(txt);
-  } catch (err) {
-    return null;
-  }
-}
-
-async function writeJsonFile(file, obj) {
-  await ensureDir(path.dirname(file));
-  await fs.writeFile(file, JSON.stringify(obj, null, 2), 'utf8');
-}
-
 async function fetchSurahDetail(number) {
   const url = `http://api.alquran.cloud/v1/surah/${number}`;
   const res = await axios.get(url);
@@ -145,16 +131,33 @@ async function main() {
     console.log(`Starting edition ${editionId} — will fetch all verses then write ${editionId}.json`);
     // load previous buffer to resume if exists
     const bufferFile = path.join(DATA_AYAH_DIR, `${editionId}.json`);
-    const buffer = await readJson(bufferFile) || [];
-    const seen = new Set(buffer.map(b => b.number));
-    // expose current edition state to signal handler
-    currentEditionState = { editionId, bufferFile, buffer };
-
-    // if we already have a complete edition file (all ayahs), skip re-fetching
-    if (TOTAL_AYAHS && buffer.length >= TOTAL_AYAHS) {
-      console.log(`  Edition ${editionId} already has ${buffer.length} ayahs (expected ${TOTAL_AYAHS}). Skipping.`);
+    const existingData = await readJson(bufferFile);
+    
+    // if we have existing data, validate it first
+    if (existingData && Array.isArray(existingData)) {
+      console.log(`  Found existing file with ${existingData.length} verses`);
+      // if already complete, skip entirely
+      if (TOTAL_AYAHS && existingData.length >= TOTAL_AYAHS) {
+        console.log(`  Edition ${editionId} is complete (${existingData.length} ayahs). Skipping.`);
+        currentEditionState = null;
+        continue;
+      }
+    }
+    
+    // Don't modify existing files - only process if missing or we're explicitly told to overwrite
+    const FORCE_REPROCESS = process.env.FORCE_REPROCESS === 'true';
+    if (existingData && existingData.length > 0 && !FORCE_REPROCESS) {
+      console.log(`  Edition ${editionId} has partial data (${existingData.length} verses). Skipping to prevent corruption.`);
+      console.log(`  To reprocess, delete the file or set FORCE_REPROCESS=true`);
+      currentEditionState = null;
       continue;
     }
+    
+    // Start fresh - don't load existing data to avoid append bugs
+    const buffer = [];
+    const seen = new Set();
+    // expose current edition state to signal handler
+    currentEditionState = { editionId, bufferFile, buffer };
 
     for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
       const meta = surahMeta.find(s => s.number === surahNumber);
@@ -201,14 +204,8 @@ async function main() {
         }
         await sleep(SLEEP_MS);
       }
-      // after each surah, persist current buffer to disk so progress is not lost
-      try {
-        await writeJson(bufferFile, buffer);
-        // update shared state for signal handler
-        currentEditionState.buffer = buffer;
-      } catch (e) {
-        console.error(`  Failed to persist progress for ${editionId} after surah ${surahNumber}:`, e.message);
-      }
+      // Don't persist after every surah to avoid rewriting complete files repeatedly
+      // Progress is saved at the end of each edition or on interrupt via signal handler
     }
 
     // after fetching all surahs for this edition, write file and update index
@@ -224,13 +221,15 @@ async function main() {
       console.error('  Failed to write per-edition verse file or update index:', err.message);
     }
 
+    // clear state for this completed edition
+    currentEditionState = null;
     // wait between editions
     await sleep(EDITION_DELAY_MS);
   }
 
   // clear signal handler reference after all editions complete
   currentEditionState = null;
-  console.log('Done');
+  console.log('Done - all editions processed');
   process.exit(0);
 }
 
