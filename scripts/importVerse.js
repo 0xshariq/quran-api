@@ -25,6 +25,7 @@ const EDITION_DELAY_MS = parseInt(process.env.EDITION_DELAY_MS || '1000', 10);
 const START_SURAH = 1; // start from first surah
 const END_SURAH = 114; // end at 114
 const MAX_RETRIES = 4;
+const CHECKPOINT_INTERVAL = parseInt(process.env.CHECKPOINT_INTERVAL || '1', 10); // Save after every surah by default
 const VALID_AUDIO_BITRATES = ['192', '128', '64', '48', '40', '32'];
 // flexible parsing: accept '128', 128, or '128kbps'
 let AUDIO_BITRATE = (process.env.AUDIO_BITRATE || '128').toString();
@@ -126,45 +127,22 @@ async function main() {
   process.once('SIGINT', saveAndExit);
   process.once('SIGTERM', saveAndExit);
 
-  for (const editionMeta of selectedEditions) {
-    const editionId = editionMeta.identifier;
-    console.log(`Starting edition ${editionId} — will fetch all verses then write ${editionId}.json`);
-    // load previous buffer to resume if exists
-    const bufferFile = path.join(DATA_AYAH_DIR, `${editionId}.json`);
-    const existingData = await readJson(bufferFile);
-    
-    // if we have existing data, validate it first
-    if (existingData && Array.isArray(existingData)) {
-      console.log(`  Found existing file with ${existingData.length} verses`);
-      // if already complete, skip entirely
-      if (TOTAL_AYAHS && existingData.length >= TOTAL_AYAHS) {
-        console.log(`  Edition ${editionId} is complete (${existingData.length} ayahs). Skipping.`);
-        currentEditionState = null;
-        continue;
-      }
-    }
-    
-    // Don't modify existing files - only process if missing or we're explicitly told to overwrite
-    const FORCE_REPROCESS = process.env.FORCE_REPROCESS === 'true';
-    if (existingData && existingData.length > 0 && !FORCE_REPROCESS) {
-      console.log(`  Edition ${editionId} has partial data (${existingData.length} verses). Skipping to prevent corruption.`);
-      console.log(`  To reprocess, delete the file or set FORCE_REPROCESS=true`);
-      currentEditionState = null;
-      continue;
-    }
-    
-    // Start fresh - don't load existing data to avoid append bugs
-    const buffer = [];
-    const seen = new Set();
-    // expose current edition state to signal handler
-    currentEditionState = { editionId, bufferFile, buffer };
-
+  // Helper function to fetch verses for an edition (supports resume)
+  async function continueEditionFetch(editionId, editionMeta, buffer, seen, bufferFile, surahMeta) {
     for (let surahNumber = START_SURAH; surahNumber <= END_SURAH; surahNumber++) {
       const meta = surahMeta.find(s => s.number === surahNumber);
       let numAyahs = meta ? meta.numberOfAyahs : null;
       if (!numAyahs) {
         try { const sd = await fetchSurahDetail(surahNumber); numAyahs = sd.ayahs.length; } catch (e) { console.warn(`  Could not get ayah count for surah ${surahNumber}:`, e.message); continue; }
       }
+      
+      // Check if we already have all verses for this surah
+      const surahVerses = buffer.filter(v => v.surah.number === surahNumber);
+      if (surahVerses.length >= numAyahs) {
+        console.log(`  Surah ${surahNumber} already complete (${surahVerses.length}/${numAyahs} ayahs). Skipping.`);
+        continue;
+      }
+
       console.log(`  Fetching Surah ${surahNumber} (${numAyahs} ayahs)`);
       for (let verse = 1; verse <= numAyahs; verse++) {
         try {
@@ -199,31 +177,100 @@ async function main() {
           };
           buffer.push(ayahObj);
           seen.add(t.number);
+          // Update progress on same line
+          process.stdout.write(`\r    Progress: ${verse}/${numAyahs} ayahs`);
         } catch (err) {
           console.error(`    Warning: failed to fetch ayah ${surahNumber}:${verse} for ${editionId}:`, err.message);
         }
         await sleep(SLEEP_MS);
       }
-      // Don't persist after every surah to avoid rewriting complete files repeatedly
-      // Progress is saved at the end of each edition or on interrupt via signal handler
+      console.log(''); // New line after progress completes
+      
+      // Checkpoint: Save progress every N surahs to prevent data loss on errors
+      if (surahNumber % CHECKPOINT_INTERVAL === 0 || surahNumber === END_SURAH) {
+        try {
+          await writeJson(bufferFile, buffer);
+          console.log(`  ✓ Checkpoint: Saved ${buffer.length} verses after Surah ${surahNumber}`);
+        } catch (e) {
+          console.error(`  ✗ Checkpoint failed for Surah ${surahNumber}:`, e.message);
+        }
+      }
     }
-
-    // after fetching all surahs for this edition, write file and update index
+    
+    // Final write and update index
     try {
       await writeJson(bufferFile, buffer);
       console.log(`Wrote ${buffer.length} verses to ${bufferFile}`);
-      const verseIndex = (await readJson(DATA_VERSE_INDEX)) || [];
-      const existing = verseIndex.find(i => i.identifier === editionId);
-      if (existing) { existing.path = `data/verses/${editionId}.json`; existing.count = buffer.length; }
-      else verseIndex.push({ identifier: editionId, path: `data/verses/${editionId}.json`, count: buffer.length });
+      const verseIndex = await readJson(DATA_VERSE_INDEX) || {};
+      verseIndex[editionId] = { count: buffer.length, file: path.basename(bufferFile), editionMeta };
       await writeJson(DATA_VERSE_INDEX, verseIndex);
+      console.log(`Updated verse index for ${editionId}`);
+      return true;
     } catch (err) {
-      console.error('  Failed to write per-edition verse file or update index:', err.message);
+      console.error(`Failed to finalize edition ${editionId}:`, err.message);
+      return false;
+    }
+  }
+
+  const FORCE_REPROCESS = process.env.FORCE_REPROCESS === 'true';
+  
+  for (const editionMeta of selectedEditions) {
+    const editionId = editionMeta.identifier;
+    console.log(`Starting edition ${editionId} — will fetch all verses then write ${editionId}.json`);
+    // load previous buffer to resume if exists
+    const bufferFile = path.join(DATA_AYAH_DIR, `${editionId}.json`);
+    const existingData = await readJson(bufferFile);
+    
+    // if we have existing data, validate it first
+    if (existingData && Array.isArray(existingData)) {
+      console.log(`  Found existing file with ${existingData.length} verses`);
+      // if already complete, skip entirely
+      if (TOTAL_AYAHS && existingData.length >= TOTAL_AYAHS) {
+        console.log(`  Edition ${editionId} is complete (${existingData.length} ayahs). Skipping.`);
+        currentEditionState = null;
+        continue;
+      }
+      // If partial and FORCE_REPROCESS not set, resume from existing data
+      if (existingData.length > 0 && !FORCE_REPROCESS) {
+        console.log(`  Edition ${editionId} has partial data (${existingData.length} verses). Resuming...`);
+        // Load existing data to resume
+        const buffer = existingData;
+        const seen = new Set(buffer.map(b => b.number));
+        currentEditionState = { editionId, bufferFile, buffer };
+        
+        // Continue fetching from where we left off
+        let resumeSuccess = false;
+        try {
+          resumeSuccess = await continueEditionFetch(editionId, editionMeta, buffer, seen, bufferFile, surahMeta);
+        } catch (err) {
+          console.error(`  Resume failed for ${editionId}:`, err.message);
+        }
+        
+        if (resumeSuccess) {
+          currentEditionState = null;
+          await sleep(EDITION_DELAY_MS);
+          continue;
+        }
+        // If resume failed, fall through to fresh start
+      }
+    }
+    
+    // Start fresh - don't load existing data to avoid append bugs
+    const buffer = [];
+    const seen = new Set();
+    // expose current edition state to signal handler
+    currentEditionState = { editionId, bufferFile, buffer };
+
+    // Use the shared fetch function
+    let success = false;
+    try {
+      success = await continueEditionFetch(editionId, editionMeta, buffer, seen, bufferFile, surahMeta);
+    } catch (err) {
+      console.error(`  Fetch failed for ${editionId}:`, err.message);
     }
 
-    // clear state for this completed edition
+    // clear state after edition is done (success or fail)
     currentEditionState = null;
-    // wait between editions
     await sleep(EDITION_DELAY_MS);
   }
 
